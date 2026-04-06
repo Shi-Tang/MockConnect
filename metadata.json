@@ -1,0 +1,8 @@
+{
+  "name": "New-MockConnect",
+  "description": "A risk-free, AI-driven networking simulation environment for job seekers to practice pitches, debug conversation skills, and improve referral conversion rates.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
