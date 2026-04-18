@@ -61,15 +61,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onStart, userRecords }) =>
             Practice high-stakes networking pitches with realistic AI personas. 
             Perfect for introverts and non-native speakers looking to land that dream referral.
           </p>
-          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+          <div>
             <button 
               onClick={onStart}
               className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all transform hover:-translate-y-1 active:scale-95 text-lg"
             >
               Start Practice Session
-            </button>
-            <button className="px-8 py-4 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 font-bold rounded-xl transition-all text-lg shadow-sm">
-              Watch Demo
             </button>
           </div>
           

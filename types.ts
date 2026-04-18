@@ -14,13 +14,16 @@ export interface TargetPersona {
   personality: string;
   company: string;
   voiceType: 'masculine' | 'feminine';
+  /** True when setup text explicitly described the contact's gender and/or age. Omitted on older saved sessions. */
+  demographicCuesPresent?: boolean;
+  /** Age register for Live API voice when demographicCuesPresent is true */
+  voiceAgeBand?: 'youthful' | 'middle' | 'mature';
 }
 
 export interface SessionData {
   user?: string;
   targetProfile: string;
   jobDescription: string;
-  demographicPreference?: string;
   persona?: TargetPersona;
   previousFeedback?: FeedbackData;
 }

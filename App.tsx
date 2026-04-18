@@ -43,7 +43,7 @@ const App: React.FC = () => {
 
   const startSetup = () => setCurrentState(AppState.SETUP);
   
-  const handleSetupComplete = (data: { targetProfile: string, jobDescription: string, demographicPreference: string, persona: TargetPersona }) => {
+  const handleSetupComplete = (data: { targetProfile: string, jobDescription: string, persona: TargetPersona }) => {
     setSession(prev => ({ ...prev, ...data }));
     setCurrentState(AppState.SIMULATION);
   };
@@ -142,7 +142,7 @@ const App: React.FC = () => {
 
       <footer className="bg-slate-50 border-t border-slate-200 py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center text-slate-500 text-sm">
-          <p>© 2024 MockConnect. Designed for introverts and non-native speakers.</p>
+          <p>© 2026 MockConnect. Designed for introverts and non-native speakers.</p>
           <div className="flex space-x-4 mt-4 md:mt-0">
             <a href="#" className="hover:text-indigo-600 transition-colors">Privacy</a>
             <a href="#" className="hover:text-indigo-600 transition-colors">Terms</a>

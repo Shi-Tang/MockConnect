@@ -1,8 +1,26 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { SessionData, MessageLog, FeedbackData } from '../types';
+import { SessionData, MessageLog, FeedbackData, TargetPersona } from '../types';
 import { Type } from "@google/genai";
+
+/** Default male voice when setup has no explicit contact gender/age cues */
+const DEFAULT_MALE_VOICE = 'Puck';
+
+/** Map persona to Gemini Live prebuilt voice (Gemini prebuilt set). */
+function resolveLiveVoiceName(persona: TargetPersona | undefined): string {
+  if (!persona || persona.demographicCuesPresent !== true) return DEFAULT_MALE_VOICE;
+  const feminine = persona.voiceType === 'feminine';
+  const band = persona.voiceAgeBand ?? 'middle';
+  if (feminine) {
+    if (band === 'youthful') return 'Leda';
+    if (band === 'mature') return 'Vindemiatrix';
+    return 'Kore';
+  }
+  if (band === 'youthful') return 'Fenrir';
+  if (band === 'mature') return 'Gacrux';
+  return 'Puck';
+}
 
 interface SimulationProps {
   session: SessionData;
@@ -13,6 +31,7 @@ interface SimulationProps {
 export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel }) => {
   const [isActive, setIsActive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageLog[]>([]);
   const [isEnding, setIsEnding] = useState(false);
   const [timer, setTimer] = useState(1800); // 30 minutes
@@ -26,7 +45,9 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const transcriptionRef = useRef({ user: '', model: '' });
-  
+  /** Set true only when we call `session.close()` from endSession so onclose does not treat it as a failure. */
+  const intentionalDisconnectRef = useRef(false);
+
   // Audio encoding/decoding helpers
   const encode = (bytes: Uint8Array) => {
     let binary = '';
@@ -50,14 +71,32 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
     return buffer;
   };
 
-  const pronoun = session.persona?.voiceType === 'feminine' ? 'she' : 'he';
-  const reflexivePronoun = session.persona?.voiceType === 'feminine' ? 'herself' : 'himself';
+  const demographicVoice = session.persona?.demographicCuesPresent === true;
+  const pronoun =
+    !demographicVoice || session.persona?.voiceType !== 'feminine' ? 'he' : 'she';
+  const reflexivePronoun = pronoun === 'he' ? 'himself' : 'herself';
 
   const startSimulation = async () => {
+    setConnectionError(null);
     setIsConnecting(true);
+
+    if (!process.env.API_KEY) {
+      setConnectionError(
+        'Missing Gemini API key. Create a .env.local file with GEMINI_API_KEY=your_key and restart the dev server.'
+      );
+      setIsConnecting(false);
+      return;
+    }
+
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      }
       if (videoRef.current) videoRef.current.srcObject = stream;
+      const hasVideo = stream.getVideoTracks().length > 0;
 
       const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -74,6 +113,10 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
         
         ${session.previousFeedback ? `The user is retrying this scenario. Previous feedback was: ${JSON.stringify(session.previousFeedback)}. Focus on challenging them on their weaknesses.` : ''}
 
+        Voice and language (mandatory):
+        - All spoken output must use General American (U.S.) English accent, rhythm, and intonation. Even if the persona's background is international or non-native English in real life, for this simulation you speak as a fluent U.S. English speaker.
+        - Do not imitate a non-American accent in audio. Story details may mention other regions; your speech stays U.S. English.
+
         Rules:
         - MANDATORY START: You MUST initiate the conversation. Do not wait for the user to speak first.
         - Immediately introduce yourself as ${session.persona?.name} and mention your role.
@@ -88,18 +131,20 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
         - Do not include any viewpoints that may lead to bias, discrimination, or any related issues into your conversation.
       `;
 
-      // Determine voice name based on the generated persona's voiceType
-      const voiceName = session.persona?.voiceType === 'feminine' ? 'Kore' : 'Puck';
+      const voiceName = resolveLiveVoiceName(session.persona);
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
+            // SDK does not await this callback; kick off resume without blocking setup.
+            void inputAudioContext.resume();
+            void outputAudioContextRef.current?.resume();
             setIsActive(true);
             setIsConnecting(false);
             
             // Microphone stream
-            const source = inputAudioContext.createMediaStreamSource(stream);
+            const source = inputAudioContext.createMediaStreamSource(stream!);
             const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
             scriptProcessor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
@@ -114,26 +159,29 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputAudioContext.destination);
 
-            // Frame stream (Visual context)
-            const frameInterval = setInterval(() => {
-              if (!videoRef.current || !canvasRef.current) return;
-              const ctx = canvasRef.current.getContext('2d');
-              if (!ctx) return;
-              canvasRef.current.width = 320;
-              canvasRef.current.height = 240;
-              ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-              canvasRef.current.toBlob(blob => {
-                if (blob) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    const base64 = (reader.result as string).split(',')[1];
-                    sessionPromise.then(s => s.sendRealtimeInput({ media: { data: base64, mimeType: 'image/jpeg' } }));
-                  };
-                  reader.readAsDataURL(blob);
-                }
-              }, 'image/jpeg', 0.5);
-            }, 1000);
-            (sessionRef as any).currentInterval = frameInterval;
+            // Frame stream (visual context) — only when a camera track exists
+            let frameInterval: ReturnType<typeof setInterval> | undefined;
+            if (hasVideo) {
+              frameInterval = setInterval(() => {
+                if (!videoRef.current || !canvasRef.current) return;
+                const ctx = canvasRef.current.getContext('2d');
+                if (!ctx) return;
+                canvasRef.current.width = 320;
+                canvasRef.current.height = 240;
+                ctx.drawImage(videoRef.current, 0, 0, 320, 240);
+                canvasRef.current.toBlob(blob => {
+                  if (blob) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      const base64 = (reader.result as string).split(',')[1];
+                      sessionPromise.then(s => s.sendRealtimeInput({ media: { data: base64, mimeType: 'image/jpeg' } }));
+                    };
+                    reader.readAsDataURL(blob);
+                  }
+                }, 'image/jpeg', 0.5);
+              }, 1000);
+              (sessionRef as any).currentInterval = frameInterval;
+            }
 
             // CRITICAL: Trigger the model to introduce itself first
             sessionPromise.then(s => {
@@ -188,13 +236,33 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
               nextStartTimeRef.current = 0;
             }
           },
-          onerror: (e) => console.error("Session Error:", e),
-          onclose: () => setIsActive(false),
+          onerror: (e) => {
+            console.error("Session Error:", e);
+            setConnectionError('Live session failed (network or API). Check GEMINI_API_KEY, billing, and try again.');
+            setIsConnecting(false);
+            setIsActive(false);
+            stream?.getTracks().forEach(t => t.stop());
+          },
+          onclose: () => {
+            if (!intentionalDisconnectRef.current) {
+              setConnectionError(
+                'The live session disconnected. This is often caused by an unsupported Live API option, model access, or network issues—check the browser console for details, confirm your API key has Gemini Live enabled, and try again.'
+              );
+              stream?.getTracks().forEach(t => t.stop());
+            }
+            intentionalDisconnectRef.current = false;
+            setIsActive(false);
+            setIsConnecting(false);
+          },
         },
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction,
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+          // Native audio Live sessions: do not set languageCode here—unsupported combinations
+          // can cause the server to close the socket right after setup (see Google Live API docs).
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+          },
           inputAudioTranscription: {},
           outputAudioTranscription: {},
         }
@@ -202,6 +270,24 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
       sessionRef.current = await sessionPromise;
     } catch (err) {
       console.error(err);
+      stream?.getTracks().forEach(t => t.stop());
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'string'
+            ? err
+            : 'Could not start the simulation.';
+      if (msg.includes('Permission') || msg.includes('NotAllowedError') || msg.includes('NotReadableError')) {
+        setConnectionError(
+          'Microphone (and ideally camera) access was blocked. Allow permissions for this site in your browser settings, then try again.'
+        );
+      } else if (msg.includes('getUserMedia') || msg.includes('mediaDevices')) {
+        setConnectionError('Could not access microphone. Use HTTPS or localhost, and allow mic access.');
+      } else {
+        setConnectionError(
+          `${msg} If this persists, confirm GEMINI_API_KEY in .env.local, restart Vite, and check network access to Google’s API.`
+        );
+      }
       setIsConnecting(false);
     }
   };
@@ -219,11 +305,14 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
   const endSession = async () => {
     if (isEnding) return;
     setIsEnding(true);
-    
+    intentionalDisconnectRef.current = true;
+
     // Stop recording/streaming
     if (sessionRef.current) {
       if ((sessionRef as any).currentInterval) clearInterval((sessionRef as any).currentInterval);
       sessionRef.current.close();
+    } else {
+      intentionalDisconnectRef.current = false;
     }
     
     // Process final feedback using Gemini Chat
@@ -236,7 +325,7 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
         contents: `Evaluate this networking simulation for a job seeker. 
           Target Role: ${session.persona?.role}
           Job: ${session.jobDescription}
-          Persona: ${session.persona?.name} (${session.persona?.voiceType} voice, should be referred to as ${pronoun}/${reflexivePronoun}).
+          Persona: ${session.persona?.name} (refer to this character as ${pronoun}/${reflexivePronoun}; audio uses U.S. English).
           
           Conversation Log:
           ${conversationText}
@@ -323,10 +412,15 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
       {!isActive && !isConnecting && (
         <div className="text-center p-8 max-w-xl">
           <h2 className="text-3xl font-bold text-white mb-6">Simulation Ready</h2>
-          <p className="text-slate-400 mb-10">
+          <p className="text-slate-400 mb-6">
             You will be speaking with <strong>{session.persona?.name}</strong>. 
             Once you enter, <strong>{pronoun} will introduce {reflexivePronoun} first</strong>. Listen carefully and then respond with your pitch.
           </p>
+          {connectionError && (
+            <p className="text-sm text-amber-200/90 bg-amber-950/40 border border-amber-800/50 rounded-xl px-4 py-3 mb-8 text-left max-w-lg mx-auto">
+              {connectionError}
+            </p>
+          )}
           <div className="flex space-x-4 justify-center">
             <button 
               onClick={startSimulation}
