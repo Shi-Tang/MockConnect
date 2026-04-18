@@ -1,12 +1,3 @@
-
-export enum AppState {
-  LOGIN = 'LOGIN',
-  DASHBOARD = 'DASHBOARD',
-  SETUP = 'SETUP',
-  SIMULATION = 'SIMULATION',
-  FEEDBACK = 'FEEDBACK'
-}
-
 export interface TargetPersona {
   name: string;
   role: string;
@@ -26,6 +17,8 @@ export interface SessionData {
   jobDescription: string;
   persona?: TargetPersona;
   previousFeedback?: FeedbackData;
+  /** Accumulated user notes about AI agent behavior; shapes Live system instructions on retry/next run. */
+  agentPromptAdjustments?: string;
 }
 
 export interface PracticeRecord {

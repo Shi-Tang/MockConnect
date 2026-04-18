@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { SessionData, MessageLog, FeedbackData, TargetPersona } from '../types';
 import { Type } from "@google/genai";
+import { buildAgentFeedbackSystemBlock } from '../utils/agentFeedbackPrompt';
 
 /** Default male voice when setup has no explicit contact gender/age cues */
 const DEFAULT_MALE_VOICE = 'Puck';
@@ -112,6 +113,7 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
         Users' Target Job Description: ${session.jobDescription}
         
         ${session.previousFeedback ? `The user is retrying this scenario. Previous feedback was: ${JSON.stringify(session.previousFeedback)}. Focus on challenging them on their weaknesses.` : ''}
+        ${buildAgentFeedbackSystemBlock(session.agentPromptAdjustments)}
 
         Voice and language (mandatory):
         - All spoken output must use General American (U.S.) English accent, rhythm, and intonation. Even if the persona's background is international or non-native English in real life, for this simulation you speak as a fluent U.S. English speaker.
