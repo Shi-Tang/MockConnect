@@ -17,9 +17,16 @@ interface DashboardProps {
   onStart: () => void;
   userRecords: PracticeRecord[];
   onDeleteRecord?: (id: string) => void;
+  /** Open Session Review for a saved practice run */
+  onViewFeedback: (record: PracticeRecord) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onStart, userRecords, onDeleteRecord }) => {
+export const Dashboard: React.FC<DashboardProps> = ({
+  onStart,
+  userRecords,
+  onDeleteRecord,
+  onViewFeedback,
+}) => {
   const stats = useMemo(() => {
     if (userRecords.length === 0) return null;
 
@@ -79,21 +86,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ onStart, userRecords, onDe
               </h3>
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                 {userRecords.slice(0, 5).map((record) => (
-                  <div key={record.id} className="p-4 bg-white border border-slate-100 rounded-xl flex justify-between items-center gap-3 hover:border-indigo-200 transition-all group shadow-sm">
-                    <div className="min-w-0 flex-1">
+                  <div
+                    key={record.id}
+                    className="bg-white border border-slate-100 rounded-xl flex justify-between items-stretch gap-2 hover:border-indigo-200 transition-all group shadow-sm overflow-hidden"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onViewFeedback(record)}
+                      className="min-w-0 flex-1 text-left px-4 py-4 rounded-l-xl hover:bg-indigo-50/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-inset"
+                    >
                       <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
                         {record.session.persona?.name || 'Unknown Persona'}
                       </div>
                       <div className="text-xs text-slate-400 mt-1">
                         {new Date(record.timestamp).toLocaleDateString()} • {record.session.persona?.role || 'Networking'}
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-3 shrink-0">
+                      <span className="mt-2 inline-block text-xs font-semibold text-indigo-600">
+                        Session Review →
+                      </span>
+                    </button>
+                    <div className="flex items-center space-x-2 sm:space-x-3 shrink-0 pr-2 py-2">
                       <div className="text-right">
                         <div className="text-sm font-bold text-slate-700">{record.feedback.score}%</div>
                         <div className="text-[10px] text-slate-400 uppercase font-bold">Score</div>
                       </div>
-                      <div className={`w-2 h-2 rounded-full ${record.feedback.score >= 80 ? 'bg-green-500' : record.feedback.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
+                      <div
+                        className={`w-2 h-2 rounded-full shrink-0 ${record.feedback.score >= 80 ? 'bg-green-500' : record.feedback.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                      />
                       {onDeleteRecord && (
                         <button
                           type="button"

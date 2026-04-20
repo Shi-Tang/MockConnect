@@ -23,16 +23,6 @@ const QUICK_TAGS = [
   'The agent interrupted or rushed the conversation',
 ];
 
-/** Gemini sometimes echoes our label; strip duplicates so the UI shows one clean line. */
-function cleanDifficultyAdjustment(raw: string): string {
-  let s = raw.trim();
-  const prefix = /^Next session will be adjusted:\s*/i;
-  while (prefix.test(s)) {
-    s = s.replace(prefix, '').trim();
-  }
-  return s || raw.trim();
-}
-
 export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone }) => {
   const [agentNotes, setAgentNotes] = useState('');
   const [hoveredRadarAxis, setHoveredRadarAxis] = useState<RadarAxisLabel | null>(null);
@@ -224,13 +214,8 @@ export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone })
             Initiate Adaptive Retry
           </button>
         </div>
-        <div className="w-full max-w-xl sm:max-w-2xl sm:ml-auto rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 space-y-2.5 text-left">
-          <p className="text-xs text-slate-600 leading-relaxed">
-            <span className="font-semibold text-slate-700">Difficulty next time</span>
-            <span className="text-slate-500"> — </span>
-            {cleanDifficultyAdjustment(feedback.difficultyAdjustment)}
-          </p>
-          <p className="text-xs text-slate-500 leading-relaxed pt-2.5 border-t border-slate-200/80">
+        <div className="w-full max-w-xl sm:max-w-2xl sm:ml-auto rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-left">
+          <p className="text-xs text-slate-500 leading-relaxed">
             Optional partner notes are in the section below—add them before retry if you want them included.
           </p>
         </div>

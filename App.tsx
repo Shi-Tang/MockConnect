@@ -91,11 +91,16 @@ const App: React.FC = () => {
     navigate('/feedback');
   };
 
+  const feedbackForPage = useMemo(() => {
+    return feedback ?? loadStoredFeedback() ?? PREVIEW_FEEDBACK;
+  }, [feedback]);
+
   const handleRetry = (agentPerformanceFeedback?: string) => {
-    if (feedback) {
+    const base = feedbackForPage;
+    if (base) {
       setSession((prev) => ({
         ...prev,
-        previousFeedback: feedback,
+        previousFeedback: base,
         agentPromptAdjustments: mergeAgentFeedbackNotes(
           prev.agentPromptAdjustments,
           agentPerformanceFeedback
@@ -103,6 +108,12 @@ const App: React.FC = () => {
       }));
     }
     navigate('/simulation');
+  };
+
+  const openFeedbackFromRecord = (record: PracticeRecord) => {
+    setFeedback(record.feedback);
+    persistLastFeedback(record.feedback);
+    navigate('/feedback');
   };
 
   const resetToDashboard = () => {
@@ -132,8 +143,6 @@ const App: React.FC = () => {
     () => mergeSessionForSimulation(session, username),
     [session, username]
   );
-
-  const feedbackForPage = feedback ?? loadStoredFeedback() ?? PREVIEW_FEEDBACK;
 
   const goHome = () => {
     if (username) navigate('/dashboard');
@@ -176,6 +185,7 @@ const App: React.FC = () => {
                 onStart={startSetup}
                 userRecords={userRecords}
                 onDeleteRecord={handleDeleteRecord}
+                onViewFeedback={openFeedbackFromRecord}
               />
             }
           />

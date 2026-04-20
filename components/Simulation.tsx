@@ -556,7 +556,6 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
                 <h2 className="text-2xl font-bold text-white mb-2">
                   {isConnecting ? 'Establishing Connection...' : `${session.persona?.name} is Speaking...`}
                 </h2>
-                <p className="text-indigo-400 font-medium">Listen to the introduction</p>
               </div>
             </div>
 
