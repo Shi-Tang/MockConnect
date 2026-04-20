@@ -31,8 +31,20 @@ export interface PracticeRecord {
   feedback: FeedbackData;
 }
 
+/** Per-dimension scores (0–20 each); same rubric as Session Review radar labels */
+export interface FeedbackDimensionScores {
+  confidence: number;
+  clarity: number;
+  engagement: number;
+  research: number;
+  impact: number;
+}
+
 export interface FeedbackData {
+  /** Sum of the five dimension scores (0–100); kept in sync in app code */
   score: number;
+  /** Present for new sessions; older saved history may omit */
+  dimensionScores?: FeedbackDimensionScores;
   strengths: string[];
   weaknesses: string[];
   suggestions: string[];

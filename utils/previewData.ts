@@ -23,6 +23,13 @@ export const PREVIEW_SESSION: SessionData = {
 /** Sample Session Review for UI work when no run has finished in this tab */
 export const PREVIEW_FEEDBACK: FeedbackData = {
   score: 0,
+  dimensionScores: {
+    confidence: 0,
+    clarity: 0,
+    engagement: 0,
+    research: 0,
+    impact: 0,
+  },
   strengths: [],
   weaknesses: [
     'Issue Detected: No input provided by the user.',

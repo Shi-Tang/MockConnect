@@ -4,6 +4,14 @@ import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { SessionData, MessageLog, FeedbackData, TargetPersona } from '../types';
 import { Type } from "@google/genai";
 import { buildAgentFeedbackSystemBlock } from '../utils/agentFeedbackPrompt';
+import {
+  buildFeedbackDimensionRubricPrompt,
+  dimensionScoreFieldSchemaLine,
+  normalizeDimensionScores,
+  sumDimensionScores,
+} from '../utils/feedbackRubric';
+import { SESSION_REVIEW_MODEL, SIMULATION_LIVE_MODEL } from '../utils/modelDisclosure';
+import { SimulationDisclosureBanner } from './SimulationDisclosureBanner';
 
 /** Default male voice when setup has no explicit contact gender/age cues */
 const DEFAULT_MALE_VOICE = 'Puck';
@@ -103,13 +111,15 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
       outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
+
+      // Networking agent system prompt (Gemini Live): persona, rules, voice, and boundaries.
       const systemInstruction = `
         You are simulating a networking conversation. 
         Persona Name: ${session.persona?.name}
         Role: ${session.persona?.role} at ${session.persona?.company}
         Background: ${session.persona?.background}
         Personality Style: ${session.persona?.personality}
+        User networking profile (from setup): ${session.targetProfile}
         Users' Target Job Description: ${session.jobDescription}
         
         ${session.previousFeedback ? `The user is retrying this scenario. Previous feedback was: ${JSON.stringify(session.previousFeedback)}. Focus on challenging them on their weaknesses.` : ''}
@@ -131,12 +141,18 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
         Restrictions:
         - Do not perform to be too warm or too nice. Simulate real networking situations at best. If a user say very unrespectful words, or not behaving professionally, you should directly express your discomfort.
         - Do not include any viewpoints that may lead to bias, discrimination, or any related issues into your conversation.
+
+        Professional conduct and topic boundaries (mandatory):
+        - You must always behave in a fully professional manner appropriate for a workplace networking conversation.
+        - Do not discuss anything not suitable for work (NSFW), highly sensitive topics (e.g., explicit politics or religion as debate, medical or legal advice, polarizing controversy), or the user's private affairs (e.g., family life, romantic relationships, finances, mental or physical health details, children, or confidential employer information).
+        - If the user inadvertently shares personal or emotional details (such as family life or feelings), do not show curiosity or invite them to explore those topics further. At most give a brief neutral acknowledgment, then steer the conversation back to professional networking aligned with their setup (profile, role, company, and job description above).
+        - If the user clearly expresses discomfort with the current topic or asks to change subject, apologize sincerely and immediately, mentally re-read the configured session context (User networking profile and Target Job Description, plus your persona and company), and pivot to a clearly appropriate career- or industry-focused networking topic grounded in that configuration—without dwelling on what went wrong.
       `;
 
       const voiceName = resolveLiveVoiceName(session.persona);
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: SIMULATION_LIVE_MODEL,
         callbacks: {
           onopen: () => {
             // SDK does not await this callback; kick off resume without blocking setup.
@@ -323,10 +339,11 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
       const conversationText = messages.map(m => `${m.role}: ${m.text}`).join('\n');
       
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: SESSION_REVIEW_MODEL,
         contents: `Evaluate this networking simulation for a job seeker. 
           Target Role: ${session.persona?.role}
           Job: ${session.jobDescription}
+          User networking profile (from setup): ${session.targetProfile}
           Persona: ${session.persona?.name} (refer to this character as ${pronoun}/${reflexivePronoun}; audio uses U.S. English).
           
           Conversation Log:
@@ -335,46 +352,88 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
           CRITICAL EVALUATION RULES:
           1. Differentiate between the 'user' and the 'model' (${session.persona?.name}).
           2. ONLY evaluate the user's networking ability.
-          3. DO NOT give the user a high score just because ${session.persona?.name} (model) spoke fluently or professionally.
-          4. Focus on the user's:
-             - Clarity of their elevator pitch.
-             - Relevance and depth of their questions.
-             - Professionalism and tone.
-             - Ability to build rapport and drive the conversation toward a goal (e.g., a referral or a follow-up).
-          5. If the user was silent or gave one-word answers, the score should be low, regardless of how much ${session.persona?.name} spoke.
-          6. In the 'conversationSummary', explicitly mention the user's specific actions and how they contributed to the outcome.
-          7. Ensure 'strengths' and 'weaknesses' are strictly about the user's performance, not ${session.persona?.name}'s.`,
+          3. DO NOT give the user high dimension scores just because ${session.persona?.name} (model) spoke fluently or professionally.
+          4. If the user was silent or gave one-word answers, every dimension score should be very low, regardless of how much ${session.persona?.name} spoke.
+          5. In the 'conversationSummary', explicitly mention the user's specific actions and how they contributed to the outcome.
+          6. Ensure 'strengths' and 'weaknesses' are strictly about the user's performance, not ${session.persona?.name}'s.
+
+          ${buildFeedbackDimensionRubricPrompt()}`,
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              score: { type: Type.NUMBER, description: 'Score from 0 to 100' },
+              dimensionScores: {
+                type: Type.OBJECT,
+                description:
+                  'Five integers 0-20 each; must match rubric in prompt and sum to overall quality (app computes total 0-100)',
+                properties: {
+                  confidence: { type: Type.NUMBER, description: dimensionScoreFieldSchemaLine('confidence') },
+                  clarity: { type: Type.NUMBER, description: dimensionScoreFieldSchemaLine('clarity') },
+                  engagement: { type: Type.NUMBER, description: dimensionScoreFieldSchemaLine('engagement') },
+                  research: { type: Type.NUMBER, description: dimensionScoreFieldSchemaLine('research') },
+                  impact: { type: Type.NUMBER, description: dimensionScoreFieldSchemaLine('impact') },
+                },
+                required: ['confidence', 'clarity', 'engagement', 'research', 'impact'],
+              },
               strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
               weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
               suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
               conversationSummary: { type: Type.STRING },
-              difficultyAdjustment: { type: Type.STRING, description: 'How to adjust difficulty for next time' }
+              difficultyAdjustment: { type: Type.STRING, description: 'How to adjust difficulty for next time' },
             },
-            required: ['score', 'strengths', 'weaknesses', 'suggestions', 'conversationSummary', 'difficultyAdjustment']
-          }
-        }
+            required: [
+              'dimensionScores',
+              'strengths',
+              'weaknesses',
+              'suggestions',
+              'conversationSummary',
+              'difficultyAdjustment',
+            ],
+          },
+        },
       });
 
-      const feedback: FeedbackData = JSON.parse(response.text || '{}');
+      const parsed = JSON.parse(response.text || '{}') as Partial<FeedbackData> & {
+        dimensionScores?: FeedbackData['dimensionScores'];
+      };
+      const dimensionScores = normalizeDimensionScores(parsed.dimensionScores);
+      const feedback: FeedbackData = {
+        score: sumDimensionScores(dimensionScores),
+        dimensionScores,
+        strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+        weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        conversationSummary:
+          typeof parsed.conversationSummary === 'string'
+            ? parsed.conversationSummary
+            : 'No summary returned.',
+        difficultyAdjustment:
+          typeof parsed.difficultyAdjustment === 'string'
+            ? parsed.difficultyAdjustment
+            : 'Maintain current difficulty level',
+      };
       const duration = initialTimerRef.current - timer;
       onEnd(messages, feedback, duration);
     } catch (err) {
       console.error("Failed to generate feedback:", err);
       // Fallback feedback
       const duration = initialTimerRef.current - timer;
+      const fallbackDims = normalizeDimensionScores({
+        confidence: 10,
+        clarity: 10,
+        engagement: 10,
+        research: 10,
+        impact: 10,
+      });
       onEnd(messages, {
-        score: 50,
+        score: sumDimensionScores(fallbackDims),
+        dimensionScores: fallbackDims,
         strengths: ["Attempted to engage in the simulation"],
         weaknesses: ["Insufficient data for a detailed analysis"],
         suggestions: ["Try to speak more clearly and provide more detail in your elevator pitch next time."],
         conversationSummary: "The simulation ended before a comprehensive evaluation could be generated.",
-        difficultyAdjustment: "Maintain current difficulty level"
+        difficultyAdjustment: "Maintain current difficulty level",
       }, duration);
     }
   };
@@ -388,30 +447,35 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
   // Dedicated loading UI for the feedback generation phase
   if (isEnding) {
     return (
-      <div className="fixed inset-0 bg-slate-900 z-[100] flex flex-col items-center justify-center">
-        <div className="text-center p-8 max-w-xl">
-          <div className="relative w-24 h-24 mx-auto mb-8">
-            <div className="absolute inset-0 border-4 border-indigo-500/20 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-indigo-500 rounded-full border-t-transparent animate-spin"></div>
-          </div>
-          <h2 className="text-3xl font-bold text-white mb-4">Generating Session Review</h2>
-          <p className="text-slate-400">
-            Analyzing your conversation with <strong>{session.persona?.name}</strong>...<br/>
-            Evaluating clarity, confidence, and impact.
-          </p>
-          <div className="mt-8 flex justify-center space-x-2">
-            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-100"></div>
-            <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce delay-200"></div>
+      <div className="fixed inset-0 bg-slate-900 z-[100] flex flex-col items-stretch overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+          <div className="max-w-xl p-8 text-center">
+            <div className="relative mx-auto mb-8 h-24 w-24">
+              <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20"></div>
+              <div className="absolute inset-0 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent"></div>
+            </div>
+            <h2 className="mb-4 text-3xl font-bold text-white">Generating Session Review</h2>
+            <p className="text-slate-400">
+              Analyzing your conversation with <strong>{session.persona?.name}</strong>...
+              <br />
+              Evaluating clarity, confidence, and impact.
+            </p>
+            <div className="mt-8 flex justify-center space-x-2">
+              <div className="h-2 w-2 animate-bounce rounded-full bg-indigo-500"></div>
+              <div className="h-2 w-2 animate-bounce rounded-full bg-indigo-500 delay-100"></div>
+              <div className="h-2 w-2 animate-bounce rounded-full bg-indigo-500 delay-200"></div>
+            </div>
           </div>
         </div>
+        <SimulationDisclosureBanner />
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900 z-[100] flex flex-col items-center justify-center overflow-hidden">
+    <div className="fixed inset-0 bg-slate-900 z-[100] flex flex-col items-stretch overflow-hidden">
       {!isActive && !isConnecting && (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto">
         <div className="text-center p-8 max-w-xl">
           <h2 className="text-3xl font-bold text-white mb-6">Simulation Ready</h2>
           <p className="text-slate-400 mb-6">
@@ -438,10 +502,11 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
             </button>
           </div>
         </div>
+        </div>
       )}
 
       {(isActive || isConnecting) && (
-        <div className="w-full h-full flex flex-col">
+        <div className="flex min-h-0 w-full flex-1 flex-col">
           {/* Header Info */}
           <div className="p-6 flex justify-between items-center text-white bg-slate-900/50 backdrop-blur-md">
             <div className="flex items-center space-x-4">
@@ -524,6 +589,8 @@ export const Simulation: React.FC<SimulationProps> = ({ session, onEnd, onCancel
           </div>
         </div>
       )}
+
+      <SimulationDisclosureBanner />
     </div>
   );
 };

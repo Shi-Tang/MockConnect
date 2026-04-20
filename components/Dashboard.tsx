@@ -16,9 +16,10 @@ import {
 interface DashboardProps {
   onStart: () => void;
   userRecords: PracticeRecord[];
+  onDeleteRecord?: (id: string) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onStart, userRecords }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onStart, userRecords, onDeleteRecord }) => {
   const stats = useMemo(() => {
     if (userRecords.length === 0) return null;
 
@@ -78,21 +79,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ onStart, userRecords }) =>
               </h3>
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                 {userRecords.slice(0, 5).map((record) => (
-                  <div key={record.id} className="p-4 bg-white border border-slate-100 rounded-xl flex justify-between items-center hover:border-indigo-200 transition-all group shadow-sm">
-                    <div>
-                      <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
+                  <div key={record.id} className="p-4 bg-white border border-slate-100 rounded-xl flex justify-between items-center gap-3 hover:border-indigo-200 transition-all group shadow-sm">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
                         {record.session.persona?.name || 'Unknown Persona'}
                       </div>
                       <div className="text-xs text-slate-400 mt-1">
                         {new Date(record.timestamp).toLocaleDateString()} • {record.session.persona?.role || 'Networking'}
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-3 shrink-0">
                       <div className="text-right">
                         <div className="text-sm font-bold text-slate-700">{record.feedback.score}%</div>
                         <div className="text-[10px] text-slate-400 uppercase font-bold">Score</div>
                       </div>
                       <div className={`w-2 h-2 rounded-full ${record.feedback.score >= 80 ? 'bg-green-500' : record.feedback.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
+                      {onDeleteRecord && (
+                        <button
+                          type="button"
+                          aria-label={`Delete session with ${record.session.persona?.name || 'persona'}`}
+                          onClick={() => {
+                            const ok = window.confirm(
+                              'Delete this practice session from this browser?\n\n' +
+                                'This cannot be undone. You will lose the saved score, strengths and weaknesses, Session Review summary, any notes stored on that run, and the conversation snapshot (including coaching notes saved on that session). ' +
+                                'Your current in-progress setup is unchanged, but your progress chart and stats on the dashboard will update.\n\n' +
+                                'There is no separate cloud “model memory”—only data stored locally in this browser.'
+                            );
+                            if (ok) onDeleteRecord(record.id);
+                          }}
+                          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

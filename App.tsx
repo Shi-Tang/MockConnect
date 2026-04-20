@@ -56,6 +56,10 @@ const App: React.FC = () => {
 
   const startSetup = () => navigate('/setup');
 
+  const handleDeleteRecord = (id: string) => {
+    setHistory((prev) => prev.filter((r) => r.id !== id));
+  };
+
   const handleSetupComplete = (data: {
     targetProfile: string;
     jobDescription: string;
@@ -167,7 +171,13 @@ const App: React.FC = () => {
           <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route
             path="/dashboard"
-            element={<Dashboard onStart={startSetup} userRecords={userRecords} />}
+            element={
+              <Dashboard
+                onStart={startSetup}
+                userRecords={userRecords}
+                onDeleteRecord={handleDeleteRecord}
+              />
+            }
           />
           <Route path="/setup" element={<Setup onComplete={handleSetupComplete} />} />
           <Route

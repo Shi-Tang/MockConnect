@@ -1,7 +1,14 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { FeedbackData } from '../types';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
+import {
+  RADAR_AXIS_INFO,
+  RADAR_SCORING_EXPLANATION,
+  buildRadarChartData,
+  isRadarAxisLabel,
+  type RadarAxisLabel,
+} from '../utils/feedbackRubric';
 
 interface FeedbackProps {
   feedback: FeedbackData;
@@ -28,6 +35,7 @@ function cleanDifficultyAdjustment(raw: string): string {
 
 export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone }) => {
   const [agentNotes, setAgentNotes] = useState('');
+  const [hoveredRadarAxis, setHoveredRadarAxis] = useState<RadarAxisLabel | null>(null);
 
   const appendTag = useCallback((tag: string) => {
     setAgentNotes((prev) => {
@@ -42,15 +50,7 @@ export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone })
     onRetry(agentNotes.trim() || undefined);
   };
 
-  /** Align every axis with the overall score (0–100). Previous fake offsets showed non-zero area when score was 0. */
-  const overall = Math.max(0, Math.min(100, feedback.score));
-  const chartData = [
-    { subject: 'Confidence', A: overall, fullMark: 100 },
-    { subject: 'Clarity', A: overall, fullMark: 100 },
-    { subject: 'Engagement', A: overall, fullMark: 100 },
-    { subject: 'Research', A: overall, fullMark: 100 },
-    { subject: 'Impact', A: overall, fullMark: 100 },
-  ];
+  const chartData = useMemo(() => buildRadarChartData(feedback), [feedback]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12 space-y-8">
@@ -67,21 +67,84 @@ export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone })
           </div>
         </div>
 
-        <div className="h-64 mb-8">
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart cx="50%" cy="50%" outerRadius="80%" data={chartData}>
-              <PolarGrid stroke="#e2e8f0" />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 12 }} />
-              <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
-              <Radar
-                name="Performance"
-                dataKey="A"
-                stroke="#4f46e5"
-                fill="#4f46e5"
-                fillOpacity={0.6}
-              />
-            </RadarChart>
-          </ResponsiveContainer>
+        <div className="mb-8">
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={chartData}>
+                <PolarGrid stroke="#e2e8f0" />
+                <PolarAngleAxis
+                  dataKey="subject"
+                  tick={(props: {
+                    x: number;
+                    y: number;
+                    textAnchor: string;
+                    verticalAnchor: string;
+                    /** Recharts 3 passes the tick label here, not as a top-level `value`. */
+                    payload?: { value?: string | number; coordinate?: number };
+                  }) => {
+                    const { x, y, textAnchor, verticalAnchor, payload } = props;
+                    const label =
+                      payload?.value !== undefined && payload.value !== ''
+                        ? String(payload.value)
+                        : '';
+                    const axis = isRadarAxisLabel(label) ? label : null;
+                    const active = axis && hoveredRadarAxis === axis;
+                    return (
+                      <g
+                        key={label || String(payload?.coordinate ?? x)}
+                        className="cursor-help"
+                        onMouseEnter={() => axis && setHoveredRadarAxis(axis)}
+                        onMouseLeave={() => setHoveredRadarAxis(null)}
+                      >
+                        <circle cx={x} cy={y} r={22} fill="transparent" />
+                        <text
+                          x={x}
+                          y={y}
+                          textAnchor={textAnchor as 'start' | 'middle' | 'end'}
+                          verticalAnchor={verticalAnchor as 'start' | 'middle' | 'end'}
+                          fill={active ? '#4f46e5' : '#64748b'}
+                          fontSize={12}
+                          className="pointer-events-none transition-colors"
+                        >
+                          {label}
+                        </text>
+                      </g>
+                    );
+                  }}
+                />
+                <PolarRadiusAxis angle={90} domain={[0, 20]} tick={false} axisLine={false} />
+                <Radar
+                  name="Performance"
+                  dataKey="A"
+                  stroke="#4f46e5"
+                  fill="#4f46e5"
+                  fillOpacity={0.6}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+          <div
+            className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 min-h-[5.5rem]"
+            role="region"
+            aria-live="polite"
+            aria-label="Metric description"
+          >
+            {hoveredRadarAxis ? (
+              <div>
+                <p className="text-sm font-bold text-slate-900">{hoveredRadarAxis}</p>
+                <p className="text-xs text-slate-600 leading-relaxed mt-1">
+                  {RADAR_AXIS_INFO[hoveredRadarAxis].description}
+                </p>
+                <p className="text-xs text-slate-500 leading-relaxed mt-2 pt-2 border-t border-slate-200/90">
+                  {RADAR_SCORING_EXPLANATION}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Hover a metric name on the chart to see what it measures and how your score is represented.
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="bg-indigo-50 rounded-2xl p-6 border border-indigo-100 mb-8">
@@ -161,12 +224,16 @@ export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone })
             Initiate Adaptive Retry
           </button>
         </div>
-        <p className="text-center sm:text-right text-xs text-slate-500 leading-relaxed max-w-3xl sm:ml-auto">
-          Difficulty next time: {cleanDifficultyAdjustment(feedback.difficultyAdjustment)}
-        </p>
-        <p className="text-center sm:text-right text-[11px] text-slate-500 max-w-3xl sm:ml-auto">
-          Optional partner notes are in the section below—add them before retry if you want them included.
-        </p>
+        <div className="w-full max-w-xl sm:max-w-2xl sm:ml-auto rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 space-y-2.5 text-left">
+          <p className="text-xs text-slate-600 leading-relaxed">
+            <span className="font-semibold text-slate-700">Difficulty next time</span>
+            <span className="text-slate-500"> — </span>
+            {cleanDifficultyAdjustment(feedback.difficultyAdjustment)}
+          </p>
+          <p className="text-xs text-slate-500 leading-relaxed pt-2.5 border-t border-slate-200/80">
+            Optional partner notes are in the section below—add them before retry if you want them included.
+          </p>
+        </div>
       </div>
 
       {/* Quick pulse — separate section */}
