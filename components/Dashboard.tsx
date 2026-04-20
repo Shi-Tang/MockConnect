@@ -139,15 +139,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
           )}
-
-          <div className="mt-12 flex items-center space-x-4 text-slate-500 text-sm font-medium">
-            <div className="flex -space-x-2">
-              {[1, 2, 3, 4].map(i => (
-                <img key={i} src={`https://picsum.photos/seed/${i + 20}/32/32`} className="w-8 h-8 rounded-full border-2 border-white" alt="User" />
-              ))}
-            </div>
-            <span>Joined by 2,000+ job seekers this week</span>
-          </div>
         </div>
 
         <div className="relative">
