@@ -26,6 +26,7 @@ const QUICK_TAGS = [
 export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone }) => {
   const [agentNotes, setAgentNotes] = useState('');
   const [hoveredRadarAxis, setHoveredRadarAxis] = useState<RadarAxisLabel | null>(null);
+  const [quickPulseSubmitted, setQuickPulseSubmitted] = useState(false);
 
   const appendTag = useCallback((tag: string) => {
     setAgentNotes((prev) => {
@@ -37,6 +38,12 @@ export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone })
   }, []);
 
   const handleRetry = () => {
+    setQuickPulseSubmitted(false);
+    onRetry(agentNotes.trim() || undefined);
+  };
+
+  const handleQuickPulseSubmit = () => {
+    setQuickPulseSubmitted(true);
     onRetry(agentNotes.trim() || undefined);
   };
 
@@ -259,11 +266,28 @@ export const Feedback: React.FC<FeedbackProps> = ({ feedback, onRetry, onDone })
         <textarea
           id="partner-feedback-notes"
           value={agentNotes}
-          onChange={(e) => setAgentNotes(e.target.value)}
+          onChange={(e) => {
+            setAgentNotes(e.target.value);
+            if (quickPulseSubmitted) setQuickPulseSubmitted(false);
+          }}
           placeholder="e.g. Felt a bit brisk when I mentioned my career pivot—warmer next time would help."
           rows={4}
           className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-y min-h-[100px]"
         />
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <button
+            type="button"
+            onClick={handleQuickPulseSubmit}
+            className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-all w-full sm:w-auto"
+          >
+            Submit quick pulse
+          </button>
+          {quickPulseSubmitted && (
+            <p className="text-xs text-green-700">
+              Submitted. Starting adaptive retry with your notes.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
