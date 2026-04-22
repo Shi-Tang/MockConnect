@@ -225,7 +225,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
     <div className="max-w-3xl mx-auto px-6 py-12">
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 md:p-12">
         <h2 className="text-3xl font-bold text-slate-900 mb-2">Configure Your Simulation</h2>
-        <p className="text-slate-500 mb-4">Describe who you're networking with and the role you want. (Text only, no URLs)</p>
+        <p className="text-slate-500 mb-4">Describe who you're networking with and the role you want.</p>
         <p className="text-xs text-slate-400 mb-10 leading-relaxed">
           The agent uses a default male U.S. English voice unless you clearly describe this contact's gender and/or age in the fields below, in which case the voice matches that description while remaining U.S. English.
         </p>
@@ -234,9 +234,8 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
           <div>
             <div className="flex justify-between items-end mb-3">
               <label className="block text-sm font-bold text-slate-700">
-                Target Person Description
+                Target Contact Description
               </label>
-              <span className="text-xs text-slate-400 font-medium italic">Text only, no links</span>
             </div>
             
             <textarea 
@@ -263,7 +262,7 @@ export const Setup: React.FC<SetupProps> = ({ onComplete }) => {
 
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-3">
-              Target Job Description
+              Your Target Job Description
             </label>
             <textarea 
               value={jd}
