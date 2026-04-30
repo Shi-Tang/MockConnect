@@ -67,4 +67,6 @@ MockConnect is a **networking practice simulator**: you set a target profile and
 
 ## Origin and how it was built
 
+This README file is also AI-generated.
+
 The first version came from [Google AI Studio](https://ai.studio/apps/911483f8-c04a-49d4-863a-ce8f19ff54e5). Everything since then has been **vibe coding**—iterative, AI-assisted work in Cursor without a formal spec or design doc. The **system prompt** used for the simulation is the one part that was **edited manually** so behaviour stays intentional and reviewable.
